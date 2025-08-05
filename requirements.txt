@@ -31,3 +31,6 @@ tavily-python # Tavily客户端库
 # 部署工具
 supervisor==4.2.5  # 进程管理
 redis==4.5.4  # 可选的缓存后端
+
+# 加密货币分析依赖
+talib-binary==0.4.26  # 技术分析库

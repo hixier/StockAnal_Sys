@@ -34,6 +34,8 @@ from stock_qa import StockQA
 from risk_monitor import RiskMonitor
 from index_industry_analyzer import IndexIndustryAnalyzer
 from news_fetcher import news_fetcher, start_news_scheduler
+from crypto_analyzer import CryptoAnalyzer
+from crypto_api_endpoints import crypto_api
 
 # 加载环境变量
 load_dotenv()
@@ -76,6 +78,7 @@ cache = Cache(config={'CACHE_TYPE': 'SimpleCache'})
 cache.init_app(app)
 
 app.register_blueprint(swaggerui_blueprint, url_prefix=SWAGGER_URL)
+app.register_blueprint(crypto_api)
 
 # 确保全局变量在重新加载时不会丢失
 if 'analyzer' not in globals():
@@ -96,6 +99,7 @@ stock_qa = StockQA(analyzer, os.getenv('OPENAI_API_KEY'), os.getenv('OPENAI_API_
 risk_monitor = RiskMonitor(analyzer)
 index_industry_analyzer = IndexIndustryAnalyzer(analyzer)
 industry_analyzer = IndustryAnalyzer()
+crypto_analyzer = CryptoAnalyzer()
 
 start_news_scheduler()
 
@@ -552,6 +556,10 @@ def qa_page():
 @app.route('/industry_analysis')
 def industry_analysis():
     return render_template('industry_analysis.html')
+
+@app.route('/crypto_analysis')
+def crypto_analysis():
+    return render_template('crypto_analysis.html')
 
 
 def make_cache_key_with_stock():

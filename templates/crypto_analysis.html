@@ -1,0 +1,308 @@
+{% extends "layout.html" %}
+
+{% block title %}加密货币分析{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-md-8">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">
+                        <i class="fas fa-coins me-2"></i>加密货币分析
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="row mb-4">
+                        <div class="col-md-6">
+                            <div class="input-group">
+                                <input type="text" id="cryptoSymbol" class="form-control" placeholder="输入加密货币符号 (如: BTC, ETH)" value="BTC">
+                                <button class="btn btn-primary" type="button" onclick="analyzeCrypto()">
+                                    <i class="fas fa-search me-1"></i>分析
+                                </button>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <button class="btn btn-outline-secondary" onclick="loadTopCryptos()">
+                                <i class="fas fa-list me-1"></i>热门币种
+                            </button>
+                        </div>
+                    </div>
+
+                    <div id="analysisResult" style="display: none;">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="card bg-light">
+                                    <div class="card-body">
+                                        <h6 class="card-title">基本信息</h6>
+                                        <div id="basicInfo"></div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="card bg-light">
+                                    <div class="card-body">
+                                        <h6 class="card-title">评分分析</h6>
+                                        <div id="scoreInfo"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="row mt-3">
+                            <div class="col-12">
+                                <div class="card">
+                                    <div class="card-body">
+                                        <h6 class="card-title">投资建议</h6>
+                                        <div id="investmentAdvice"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="loadingStatus" style="display: none;">
+                        <div class="text-center">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">分析中...</span>
+                            </div>
+                            <p class="mt-2" id="loadingText">正在分析加密货币...</p>
+                        </div>
+                    </div>
+
+                    <div id="errorMessage" style="display: none;">
+                        <div class="alert alert-danger" role="alert">
+                            <i class="fas fa-exclamation-triangle me-2"></i>
+                            <span id="errorText"></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-header">
+                    <h6 class="card-title mb-0">
+                        <i class="fas fa-star me-2"></i>热门币种
+                    </h6>
+                </div>
+                <div class="card-body">
+                    <div id="topCryptosList"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let currentTaskId = null;
+
+document.addEventListener('DOMContentLoaded', function() {
+    loadTopCryptos();
+});
+
+function analyzeCrypto() {
+    const symbol = document.getElementById('cryptoSymbol').value.trim().toUpperCase();
+    if (!symbol) {
+        showError('请输入加密货币符号');
+        return;
+    }
+
+    showLoading('正在分析 ' + symbol + '...');
+    hideResult();
+    hideError();
+
+    fetch('/api/crypto/analyze', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ symbol: symbol })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.error) {
+            showError(data.error);
+        } else {
+            currentTaskId = data.task_id;
+            checkAnalysisStatus();
+        }
+    })
+    .catch(error => {
+        showError('启动分析失败: ' + error.message);
+    });
+}
+
+function checkAnalysisStatus() {
+    if (!currentTaskId) return;
+
+    fetch(`/api/crypto/status/${currentTaskId}`)
+    .then(response => response.json())
+    .then(data => {
+        if (data.error) {
+            showError(data.error);
+            return;
+        }
+
+        updateLoadingProgress(data.progress || 0, data.status);
+
+        if (data.status === 'completed') {
+            hideLoading();
+            displayAnalysisResult(data.result);
+        } else if (data.status === 'failed') {
+            hideLoading();
+            showError(data.error || '分析失败');
+        } else {
+            setTimeout(checkAnalysisStatus, 1000);
+        }
+    })
+    .catch(error => {
+        showError('检查状态失败: ' + error.message);
+    });
+}
+
+function displayAnalysisResult(result) {
+    if (result.error) {
+        showError(result.error);
+        return;
+    }
+
+    const basicInfo = document.getElementById('basicInfo');
+    basicInfo.innerHTML = `
+        <div class="row">
+            <div class="col-6">
+                <strong>当前价格:</strong> $${formatNumber(result.current_price)}
+            </div>
+            <div class="col-6">
+                <strong>24h涨跌:</strong> 
+                <span class="${result.price_change_24h >= 0 ? 'text-success' : 'text-danger'}">
+                    ${result.price_change_24h >= 0 ? '+' : ''}${result.price_change_24h.toFixed(2)}%
+                </span>
+            </div>
+        </div>
+        <div class="row mt-2">
+            <div class="col-6">
+                <strong>市值排名:</strong> #${result.market_cap_rank}
+            </div>
+            <div class="col-6">
+                <strong>24h成交量:</strong> $${formatNumber(result.total_volume)}
+            </div>
+        </div>
+    `;
+
+    const scoreInfo = document.getElementById('scoreInfo');
+    scoreInfo.innerHTML = `
+        <div class="row">
+            <div class="col-4">
+                <div class="text-center">
+                    <div class="h4 text-primary">${result.technical_score.toFixed(1)}</div>
+                    <small class="text-muted">技术面</small>
+                </div>
+            </div>
+            <div class="col-4">
+                <div class="text-center">
+                    <div class="h4 text-success">${result.fundamental_score.toFixed(1)}</div>
+                    <small class="text-muted">基本面</small>
+                </div>
+            </div>
+            <div class="col-4">
+                <div class="text-center">
+                    <div class="h4 text-warning">${result.total_score.toFixed(1)}</div>
+                    <small class="text-muted">综合评分</small>
+                </div>
+            </div>
+        </div>
+    `;
+
+    const investmentAdvice = document.getElementById('investmentAdvice');
+    investmentAdvice.innerHTML = `
+        <div class="alert alert-info">
+            <i class="fas fa-lightbulb me-2"></i>
+            <strong>投资建议:</strong> ${result.investment_advice}
+        </div>
+    `;
+
+    document.getElementById('analysisResult').style.display = 'block';
+}
+
+function loadTopCryptos() {
+    fetch('/api/crypto/top?limit=10')
+    .then(response => response.json())
+    .then(data => {
+        if (data.error) {
+            console.error(data.error);
+            return;
+        }
+        
+        const container = document.getElementById('topCryptosList');
+        container.innerHTML = '';
+        
+        data.cryptos.forEach(crypto => {
+            const cryptoElement = document.createElement('div');
+            cryptoElement.className = 'd-flex justify-content-between align-items-center mb-2 p-2 border-bottom';
+            cryptoElement.innerHTML = `
+                <div>
+                    <strong>${crypto.symbol}</strong>
+                    <br><small class="text-muted">${crypto.name}</small>
+                </div>
+                <div class="text-end">
+                    <div>$${formatNumber(crypto.current_price)}</div>
+                    <small class="${crypto.price_change_24h >= 0 ? 'text-success' : 'text-danger'}">
+                        ${crypto.price_change_24h >= 0 ? '+' : ''}${crypto.price_change_24h.toFixed(2)}%
+                    </small>
+                </div>
+            `;
+            cryptoElement.style.cursor = 'pointer';
+            cryptoElement.onclick = () => {
+                document.getElementById('cryptoSymbol').value = crypto.symbol;
+                analyzeCrypto();
+            };
+            container.appendChild(cryptoElement);
+        });
+    })
+    .catch(error => {
+        console.error('加载热门币种失败:', error);
+    });
+}
+
+function showLoading(text) {
+    document.getElementById('loadingText').textContent = text;
+    document.getElementById('loadingStatus').style.display = 'block';
+}
+
+function hideLoading() {
+    document.getElementById('loadingStatus').style.display = 'none';
+}
+
+function updateLoadingProgress(progress, status) {
+    const text = status === 'running' ? `分析中... ${progress}%` : status;
+    document.getElementById('loadingText').textContent = text;
+}
+
+function showError(message) {
+    document.getElementById('errorText').textContent = message;
+    document.getElementById('errorMessage').style.display = 'block';
+}
+
+function hideError() {
+    document.getElementById('errorMessage').style.display = 'none';
+}
+
+function hideResult() {
+    document.getElementById('analysisResult').style.display = 'none';
+}
+
+function formatNumber(num) {
+    if (num >= 1e9) {
+        return (num / 1e9).toFixed(2) + 'B';
+    } else if (num >= 1e6) {
+        return (num / 1e6).toFixed(2) + 'M';
+    } else if (num >= 1e3) {
+        return (num / 1e3).toFixed(2) + 'K';
+    } else {
+        return num.toFixed(2);
+    }
+}
+</script>
+{% endblock %} 
